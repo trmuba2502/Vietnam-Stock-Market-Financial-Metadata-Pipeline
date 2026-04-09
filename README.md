@@ -30,7 +30,6 @@ Database-Management/
 │
 ├── logs/                        # Execution logs to track downloading progress and catch errors.
 │
-├── Financial Components.pdf        # Documentation specifying the 46-component English financial statement schema based on international standards.
 ├── requirements.txt                # List of required Python dependencies (vnstock, pandas, tqdm).
 └── README.md                       # Project overview and instructions.
 ```
