@@ -1,76 +1,197 @@
-# Vietnam Stock Market Financial Metadata Pipeline
+# Vietnam Stock Market — Financial Metadata Pipeline
 
-This project is a complete Data Pipeline designed to scrape, clean, and transform the financial statements of all listed companies across Vietnam's three major stock exchanges (HOSE, HNX, UPCOM) covering the most recent 10-year period.
+A complete end-to-end data engineering pipeline that downloads, cleans, and transforms **10 years of financial statements** for all Vietnamese listed companies (HOSE · HNX · UPCOM) into a **3NF-normalized PostgreSQL database** ready for analysis and modeling.
 
-The primary objective is to extract raw financial data in Vietnamese and standardize it into a **46-component English Schema** to facilitate data analysis, quantitative research, and Machine Learning modeling.
+---
+
+## Overview
+
+| Item | Detail |
+|------|--------|
+| **Coverage** | ~1,549 listed companies across HOSE, HNX, UPCOM |
+| **Period** | 10 fiscal years (annual) |
+| **Statements** | Income Statement · Balance Sheet · Cash Flow |
+| **Ratios** | ROA · ROE · Debt Ratio · Gross Margin · Net Margin · Current Ratio |
+| **Output** | 8-table 3NF PostgreSQL schema + normalized CSV files |
+| **Data Source** | [vnstock](https://github.com/thinh-vu/vnstock) API (VCI / TCBS) |
 
 ---
 
 ## Project Structure
 
-The repository is modularized into independently functioning components as follows:
-
-```text
-Database-Management/
+```
+Vietnam-Stock-Market-Financial-Metadata-Pipeline/
 │
-├── source_code/                 # Contains all automated source code scripts
-│   ├── download_financials.py      # Core script: Downloads Financial Statements (Income, Balance, Cashflow) with Resume/Retry built-in to prevent API blocks.
-│   ├── transform_financials.py     # Core script: Processes raw data, maps Vietnamese keywords to the English Schema, and calculates financial ratios.
-│   ├── update_industries2.py       # Utility: Updates the industry classification categories using a reliable Github source (English Sectors).
-│   ├── update_companies.py         # Utility: Updates the list of stock tickers and company names.
-│   ├── quality_check.py            # Utility: Validates final data quality (checks for invalid IDs and missing values).
-│   ├── read_pdf.py                 # Utility: Script used to read the initial schema definition from the PDF.
-│   └── ...                         # Other testing, patching, and backup scripts.
+├── source_code/
+│   ├── download_financials.py   # Downloads raw IS, BS, CF statements for every ticker
+│   ├── transform_financials.py  # Maps Vietnamese VAS accounts → 46-column English schema + ratios
+│   ├── fetch_exchange.py        # Fetches exchange listing (HOSE/HNX/UPCOM) from vnstock
+│   ├── build_database.py        # Builds 8 normalized CSV tables + PostgreSQL DDL script + schema docs
+│   ├── update_companies.py      # Refreshes Companies.csv (ticker list)
+│   ├── update_industries2.py    # Refreshes Industries.csv (sector classification)
+│   └── quality_check.py         # Validates FK integrity and missing-value rates
 │
-├── financial_data/              # Contains the final structured CSV database
-│   ├── Companies.csv               # Company Metadata Lookup Table (CompanyID, Ticker, Name, IndustryID).
-│   ├── Industries.csv              # Standardized Industry Classification Table (IndustryID, IndustryName).
-│   ├── Financials_Clean.csv        # The MASTER File - Standardized 46-column financial data along with computed ratios.
-│   └── temp/                    # Directory for caching raw individual financial statement CSVs during the download process.
-│
-├── logs/                        # Execution logs to track downloading progress and catch errors.
-│
-├── requirements.txt                # List of required Python dependencies (vnstock, pandas, tqdm).
-└── README.md                       # Project overview and instructions.
+├── requirements.txt
+└── README.md
 ```
 
-## Workflow / How to Use
+> `financial_data/` (raw data, CSVs, database output) and `logs/` are excluded from version control via `.gitignore`. Create the `financial_data/` folder locally before running the pipeline.
 
-To update and extract data, follow the pipeline execution order below:
+---
 
-### 1. Install Dependencies
-Ensure you have your virtual environment activated (if applicable) and install the necessary packages:
+## Database Schema (3NF — 8 Tables)
+
+```
+stock_exchanges ──< companies >── industries
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+    income_statements          balance_sheets
+    cash_flows                 financial_ratios
+
+account_dictionary  (standalone VAS account lookup)
+```
+
+| # | Table | Rows | Key |
+|---|-------|-----:|-----|
+| 1 | `industries` | 24 | `industry_id` |
+| 2 | `stock_exchanges` | 3 | `exchange_id` |
+| 3 | `companies` | 1,549 | `company_id` |
+| 4 | `account_dictionary` | 31 | `account_id` (e.g. `IS-01`) |
+| 5 | `income_statements` | ~14,500 | `(company_id, fiscal_year)` |
+| 6 | `balance_sheets` | ~14,500 | `(company_id, fiscal_year)` |
+| 7 | `cash_flows` | ~14,500 | `(company_id, fiscal_year)` |
+| 8 | `financial_ratios` | ~14,500 | `(company_id, fiscal_year)` |
+
+> Full column-level documentation: [`financial_data/final/schema_details.md`](financial_data/final/schema_details.md)
+
+---
+
+## Quickstart
+
+### 1. Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Update Metadata (Company Names, Industry Sectors)
-Update the lists of companies and industry groups. This will establish the lookup tables required for ID mapping.
-```bash
-python source_code/update_industries2.py
-```
-*(If you need to update the basic ticker lists first, you can use `update_companies.py`)*
+### 2. (First time only) Download raw financial statements
 
-### 3. Start the Download Pipeline
-The download process supports a persistent caching mechanism. Successfully downloaded tickers are automatically saved into the `temp/` folder. If you encounter a network issue or the process crashes, simply run this script again—it will intelligently skip the companies it has already downloaded.
 ```bash
 python source_code/download_financials.py
 ```
-*Tip: Provide the `--retry` flag to re-attempt failed downloads, or `--test` to scrape a sample of 10 major tickers.*
 
-### 4. Transform Data into Master File
-Once the download is complete, run the transform file to aggregate the data, map the Vietnamese terms to the English schema, compute metrics, and generate `Financials_Clean.csv`.
+- Resume-safe: already-downloaded tickers are cached in `financial_data/temp/` and skipped automatically.
+- Use `--retry` to re-attempt previously failed tickers.
+- Use `--test` to run on 10 major tickers for a quick smoke-test.
+
+### 3. Transform raw data → clean master file
+
 ```bash
 python source_code/transform_financials.py
 ```
 
-### 5. Quality Assurance Check
-Run the quality check script to verify that every ticker present in the clean data table has a valid foreign key reference within the Companies lookup table.
+Produces `financial_data/Financials_Clean.csv` — a 46-column, English-schema master file.
+
+### 4. Fetch real exchange listings (HOSE / HNX / UPCOM)
+
+```bash
+python source_code/fetch_exchange.py
+```
+
+Downloads accurate exchange data from vnstock and updates `Companies.csv` with `exchange_id`. This only needs to be run once (or when the listing changes).
+
+### 5. Build the normalized database
+
+```bash
+python source_code/build_database.py
+```
+
+Generates all 8 CSV tables, the PostgreSQL script, and schema documentation in `financial_data/final/`.
+
+### 6. Load into PostgreSQL
+
+```bash
+cd financial_data/final
+psql -U your_user -d your_database -f vietnam_financial_db.sql
+```
+
+The SQL script uses `\COPY` (psql client-side) to load data directly from the CSV files — no INSERT bloat.
+
+### 7. Validate data quality
+
 ```bash
 python source_code/quality_check.py
 ```
 
-## Key Backend Features
-- **Zero Data Loss**: Automatically detects partial caches and supports continuing from exactly where it left off, circumventing crashes.
-- **Robust Anti-Bot Handling**: Integrated exponential backoffs, random delays, and HTTP 429 scale-retries to deal with strict API rate limits.
-- **Advanced Automated Mapping**: The pipeline relies on a powerful Regex and substring dictionary approach to seamlessly reconcile Vietnam Accounting Standards (both Non-Financial and Banking/Securities Blocks) mapping them consistently into the unified 46-column structure.
+---
+
+## Pipeline Summary
+
+```
+vnstock API
+    │
+    ▼
+download_financials.py  ──►  financial_data/temp/  (raw per-ticker CSVs)
+    │
+    ▼
+transform_financials.py ──►  Financials_Clean.csv  (46-col clean master)
+    │
+    ├── fetch_exchange.py ──►  Companies.csv  (+ exchange_id column)
+    │
+    ▼
+build_database.py       ──►  financial_data/final/
+                               ├── 01–08 *.csv  (normalized tables)
+                               ├── vietnam_financial_db.sql
+                               └── schema_details.md
+```
+
+---
+
+## Key Features
+
+- **Resume-safe downloads** — Cached per-ticker CSVs let the pipeline continue from exactly where it left off after a crash or rate-limit block.
+- **VAS account mapping** — A regex + substring dictionary automatically reconciles Vietnam Accounting Standards (both general and banking/securities blocks) into the unified English schema.
+- **Accurate exchange data** — Exchange listing (HOSE/HNX/UPCOM) is fetched directly from the vnstock API, not guessed from ticker patterns.
+- **3NF normalized database** — Redundancy-free schema with proper FK constraints, ready to load into any PostgreSQL instance.
+- **Anti-rate-limit handling** — Exponential backoff, random delays, and HTTP 429 auto-retry keep the download stable against strict API limits.
+
+---
+
+## Example Queries
+
+```sql
+-- Top 10 companies by ROE in 2024
+SELECT c.ticker, c.company_name, fr.roe_pct
+FROM financial_ratios fr
+JOIN companies c ON c.company_id = fr.company_id
+WHERE fr.fiscal_year = 2024
+ORDER BY fr.roe_pct DESC NULLS LAST
+LIMIT 10;
+
+-- Revenue and net income trend for VCB
+SELECT fiscal_year, revenue, net_income
+FROM income_statements
+WHERE company_id = (SELECT company_id FROM companies WHERE ticker = 'VCB')
+ORDER BY fiscal_year;
+
+-- Average debt ratio by industry in 2023
+SELECT i.industry_name, ROUND(AVG(fr.debt_ratio)::NUMERIC, 4) AS avg_debt_ratio
+FROM financial_ratios fr
+JOIN companies c ON c.company_id = fr.company_id
+JOIN industries i ON i.industry_id = c.industry_id
+WHERE fr.fiscal_year = 2023
+GROUP BY i.industry_name
+ORDER BY avg_debt_ratio DESC;
+```
+
+---
+
+## Requirements
+
+| Package | Version |
+|---------|---------|
+| `vnstock` | ≥ 0.4.0 |
+| `pandas` | ≥ 1.5.0 |
+| `tqdm` | ≥ 4.60.0 |
+| `requests` | ≥ 2.28.0 |

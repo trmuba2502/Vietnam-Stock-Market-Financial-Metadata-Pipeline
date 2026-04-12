@@ -1,2 +1,32 @@
-*.csv
-*.log
+# ── Data folders (large files, not tracked in git) ────────────────────────
+financial_data/
+logs/
+
+# ── Python ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.whl
+
+# ── Virtual environments ────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+.env
+
+# ── Jupyter ─────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── OS / Editor ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
