@@ -25,7 +25,7 @@ Vietnam-Stock-Market-Financial-Metadata-Pipeline/
 │   ├── download_financials.py   # Downloads raw IS, BS, CF statements for every ticker
 │   ├── transform_financials.py  # Maps Vietnamese VAS accounts → 46-column English schema + ratios
 │   ├── fetch_exchange.py        # Fetches exchange listing (HOSE/HNX/UPCOM) from vnstock
-│   ├── build_database.py        # Builds normalized CSV tables + PostgreSQL DDL script
+│   ├── build_database.py        # Builds normalized CSV tables
 │   ├── update_companies.py      # Refreshes the company master list (tickers & names)
 │   ├── update_industries2.py    # Refreshes industry sector classifications
 │   └── quality_check.py         # Validates data integrity (FK checks, null rates)
